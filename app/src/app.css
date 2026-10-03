@@ -1,0 +1,116 @@
+﻿@font-face { font-family: 'Inter'; font-weight: 400; font-display: block; src: url('./assets/fonts/Inter-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 500; font-display: block; src: url('./assets/fonts/Inter-Medium.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 600; font-display: block; src: url('./assets/fonts/Inter-SemiBold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 700; font-display: block; src: url('./assets/fonts/Inter-Bold.ttf') format('truetype'); }
+
+/* ================= темы ================= */
+:root, [data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #101013; --glow: #2b1c17; --line: #25252c;
+  --panel: #16161a; --panel-line: #24242b;
+  --card: #17171b; --card-line: #25252c; --card-shadow: 0 0 0 transparent;
+  --text: #f4f4f5; --text2: #e6e6e9; --muted: #8e8e96; --faint: #64646c; --caption: #6a6a73;
+  --input: #141418; --input-line: #2c2c34; --input-hover: #3c3c46; --ph: #55555e;
+  --ghost: #1d1d22; --ghost-line: #2e2e36; --btn-fg: #ececee; --hover: rgba(255, 255, 255, .075);
+  --track: #30303a; --seg: #111114; --seg-line: #24242b; --seg-fg: #9a9aa3; --seg-hover: #202027; --seg-on: #30303a; --seg-on-fg: #fff;
+  --menu: #1f1f25; --menu-line: #34343d; --menu-hover: #2d2d35; --thumb: #34343d; --bar-track: #22222a;
+  --toast: #25252c; --toast-line: #3a3a44;
+  --dialog: #17171b; --dialog-line: #30303a; --dlg-glow: #231a17; --scrim: rgba(5, 5, 8, .62);
+  --dash: #33333c; --add-bg: #221d1e; --inset: #121216; --inset-line: #222229; --inset-icon: #1e1e24;
+  --green: #4cd97b; --orange: #f0b44c; --red: #ff6b6f;
+  --green-bg: rgba(76, 217, 123, .11); --orange-bg: rgba(240, 180, 76, .12); --red-bg: rgba(255, 107, 111, .13);
+  --green-text: #7be8a0; --red-text: #ff9a9d;
+  --plan-bg: rgba(217, 119, 87, .2); --plan-text: #f3b79e;
+  --shadow: 0 18px 40px rgba(0, 0, 0, .55); --glow-k: 1;
+}
+[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f3f0; --glow: #fbe3d6; --line: #e2e0db;
+  --panel: #fff; --panel-line: #e7e5e0;
+  --card: #fff; --card-line: #e7e5e0; --card-shadow: 0 4px 22px rgba(0, 0, 0, .06);
+  --text: #18181b; --text2: #2a2a30; --muted: #6c6c75; --faint: #9a9aa2; --caption: #8a8a92;
+  --input: #f6f5f2; --input-line: #dddbd6; --input-hover: #c9c6c0; --ph: #a3a3aa;
+  --ghost: #fff; --ghost-line: #dddbd6; --btn-fg: #26262b; --hover: rgba(0, 0, 0, .05);
+  --track: #d6d4cf; --seg: #f0efeb; --seg-line: #e3e1dc; --seg-fg: #6c6c75; --seg-hover: #e7e5e0; --seg-on: #fff; --seg-on-fg: #18181b;
+  --menu: #fff; --menu-line: #e2e0db; --menu-hover: #f2f0ec; --thumb: #ccc9c3; --bar-track: #eeece8;
+  --toast: #fff; --toast-line: #e0ded9;
+  --dialog: #fff; --dialog-line: #e2e0db; --dlg-glow: #fdede5; --scrim: rgba(40, 32, 28, .3);
+  --dash: #cfccc6; --add-bg: #fbede6; --inset: #f8f7f4; --inset-line: #eceae5; --inset-icon: #eeece8;
+  --green: #1e9e57; --orange: #c67a0c; --red: #d9383e;
+  --green-bg: rgba(30, 158, 87, .1); --orange-bg: rgba(198, 122, 12, .11); --red-bg: rgba(217, 56, 62, .1);
+  --green-text: #1b8a4c; --red-text: #c8323a;
+  --plan-bg: rgba(217, 119, 87, .14); --plan-text: #b9502e;
+  --shadow: 0 18px 40px rgba(60, 40, 30, .16); --glow-k: .55;
+}
+
+:root {
+  --accent: linear-gradient(135deg, #ee916c, #cc5f3f);
+  --danger: linear-gradient(135deg, #f2666b, #c9363c);
+  --ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* смена темы/языка — плавный crossfade всего окна */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .38s; animation-timing-function: ease; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  font: 13px/1.4 'Inter', 'Segoe UI', sans-serif;
+  color: var(--text);
+  background: radial-gradient(75% 65% at 8% 0%, var(--glow), var(--bg));
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+#app { height: 100%; }
+button, input { font: inherit; color: inherit; }
+::selection { background: rgba(217, 119, 87, .45); }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: var(--thumb); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ================= кнопки ================= */
+.btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent;
+  background: transparent; color: var(--btn-fg); font-weight: 500; font-size: 13px; white-space: nowrap;
+  cursor: pointer; transition: transform .12s var(--ease), background-color .15s, border-color .15s, opacity .15s, color .15s;
+}
+.btn::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--hover); opacity: 0; transition: opacity .15s; pointer-events: none; }
+.btn:hover::after { opacity: 1; }
+.btn:active { transform: scale(.965); }
+.btn:disabled { opacity: .38; pointer-events: none; }
+.btn.accent { background: var(--accent); color: #fff; font-weight: 600; box-shadow: 0 6px 18px -6px rgba(214, 105, 70, .55); }
+.btn.accent::after { background: rgba(255, 255, 255, .12); }
+.btn.danger { background: var(--danger); color: #fff; font-weight: 600; }
+.btn.ghost { background: var(--ghost); border-color: var(--ghost-line); }
+.btn.icon { width: 36px; height: 36px; padding: 0; color: var(--muted); }
+.btn.icon:hover { color: var(--text); }
+.btn.lg { height: 44px; font-size: 14px; }
+.btn.block { width: 100%; }
+
+/* ================= поля ================= */
+.input {
+  width: 100%; height: 40px; padding: 0 12px; border-radius: 10px;
+  background: var(--input); border: 1px solid var(--input-line); color: var(--text); outline: none;
+  transition: border-color .15s, box-shadow .15s; user-select: text;
+}
+.input::placeholder { color: var(--ph); }
+.input:hover { border-color: var(--input-hover); }
+.input:focus { border-color: #d97757; box-shadow: 0 0 0 3px rgba(217, 119, 87, .18); }
+
+.caption { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--caption); margin: 0 0 8px; }
+
+/* сегментный переключатель */
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--seg); border: 1px solid var(--seg-line); }
+.seg button {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--seg-fg); font-weight: 500; cursor: pointer; transition: background-color .15s, color .15s;
+}
+.seg button:hover { background: var(--seg-hover); color: var(--text2); }
+.seg button.on { background: var(--seg-on); color: var(--seg-on-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.seg button:disabled { opacity: .4; pointer-events: none; }
+
+[title] { cursor: inherit; }
