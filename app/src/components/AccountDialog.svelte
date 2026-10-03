@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { onMount, untrack } from 'svelte'
   import { slide } from 'svelte/transition'
   import { Check, CircleCheck, CircleAlert, LoaderCircle, FolderOpen } from '@lucide/svelte'
@@ -22,6 +22,7 @@
   let proxy = $state(acc?.proxy ?? '')
   let full = $state(acc ? acc.fullAccess : true)
   let args = $state(acc?.args ?? '')
+  let admin = $state(acc?.admin ?? false)
   // сохранённый прокси считаем проверенным; новый — только после «Проверить»
   let checkedUrl = $state<string | null>(acc?.proxy || null)
   let failedUrl = $state<string | null>(null)
@@ -94,7 +95,7 @@
   function done(ok: boolean) {
     app.accDialog = null
     if (!ok) return req.resolve(null)
-    req.resolve({ name: name.trim(), color, proxy: pxOn && norm.ok ? norm.url : '', fullAccess: full, args: args.trim() })
+    req.resolve({ name: name.trim(), color, proxy: pxOn && norm.ok ? norm.url : '', fullAccess: full, args: args.trim(), admin })
   }
 
   function setPx(on: boolean) {
@@ -154,6 +155,8 @@
 
     <p class="caption">{t('aLaunch')}</p>
     <Toggle bind:checked={full} label={t('aFull')} />
+    <div class="gap"></div>
+    <Toggle bind:checked={admin} label={t('aAdmin')} />
     <p class="label">{t('aArgs')}</p>
     <input class="input" bind:value={args} placeholder={t('aArgsPh')} spellcheck="false" />
 
@@ -175,6 +178,7 @@
 
 <style>
   .caption { margin-top: 22px; }
+  .gap { height: 12px; }
   .label { margin: 16px 0 7px; font-size: 12px; color: var(--muted); }
   .swatches { display: flex; gap: 6px; }
   .sw {

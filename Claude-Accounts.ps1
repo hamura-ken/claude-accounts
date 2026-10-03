@@ -4,6 +4,11 @@
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
+# переменные от родительской сессии Claude Code не должны доезжать до запускаемого Claude:
+# NO_COLOR/FORCE_COLOR выключают цвета, CLAUDECODE/CLAUDE_CODE_* отключают сохранение истории
+Get-ChildItem Env: | Where-Object { $_.Name -in 'NO_COLOR', 'FORCE_COLOR', 'CLAUDECODE', 'CLAUDE_PID' -or $_.Name -like 'CLAUDE_CODE_*' } |
+  ForEach-Object { Remove-Item -LiteralPath "Env:$($_.Name)" }
+
 $UserHome   = $env:USERPROFILE
 $DefaultDir = Join-Path $UserHome '.claude'
 $CfgPath    = if ($env:CA_CFG) { $env:CA_CFG } else { Join-Path $UserHome '.claude-switcher.json' }
@@ -158,7 +163,8 @@ $S = @{
   save         = 'Сохранить', 'Save'
   gotIt        = 'Понятно', 'Got it'
   tAdded       = 'Аккаунт «{0}» добавлен — нажми «Войти» на его карточке', 'Account “{0}” added — press Sign in on its card'
-  tAccSaved    = 'Настройки аккаунта сохранены', 'Account settings saved'
+  tCancelled   = 'Запуск отменён', 'Launch cancelled'
+  tAccSaved    ='Настройки аккаунта сохранены', 'Account settings saved'
   syncTitle    = 'Синхронизация', 'Sync'
   syncNeed2    = 'Нужно хотя бы два аккаунта.', 'You need at least two accounts.'
   syncAsk      = 'Синхронизировать настройки?', 'Sync settings?'
@@ -239,6 +245,7 @@ function Load-Cfg {
           proxy      = if ($has -contains 'proxy') { [string]$a.proxy } else { $gProxy }
           fullAccess = if ($has -contains 'fullAccess') { [bool]$a.fullAccess } else { $gFull }
           args       = if ($has -contains 'args') { [string]$a.args } else { '' }
+          admin      = if ($has -contains 'admin') { [bool]$a.admin } else { $false }
         }
         $i++
       })
@@ -1405,6 +1412,8 @@ function Start-Claude($st) {
 
   # окружение передаём явно в команде — так оно не зависит от того, как терминал наследует переменные
   $sets = @()
+  # повышенный cmd стартует в System32, поэтому папку задаём явно
+  if ($acc.admin) { $sets += "cd /d `"$folder`"" }
   if (Is-DefaultDir $acc.dir) { $sets += 'set "CLAUDE_CONFIG_DIR="' } else { $sets += "set `"CLAUDE_CONFIG_DIR=$($acc.dir)`"" }
   if ($acc.proxy) { $sets += "set `"HTTPS_PROXY=$($acc.proxy)`""; $sets += "set `"HTTP_PROXY=$($acc.proxy)`"" }
   else { $sets += 'set "HTTPS_PROXY="'; $sets += 'set "HTTP_PROXY="' }
@@ -1414,12 +1423,16 @@ function Start-Claude($st) {
   if ($acc.args) { $cmdLine += ' ' + $acc.args }
   $inner = (@($sets) + "title $title" + $cmdLine) -join ' && '
 
-  if ($script:cfg.terminal -eq 'wt' -and $HasWt) {
-    $wtInner = $inner -replace ';', '\;'
-    Start-Process wt.exe -ArgumentList "-w new -d `"$folder`" --title `"$title`" cmd /k `"$wtInner`""
-  } else {
-    Start-Process cmd.exe -ArgumentList "/k `"$inner`"" -WorkingDirectory $folder
-  }
+  # admin — через UAC; «Нет» в окне подтверждения просто отменяет запуск
+  $verb = if ($acc.admin) { @{ Verb = 'RunAs' } } else { @{} }
+  try {
+    if ($script:cfg.terminal -eq 'wt' -and $HasWt) {
+      $wtInner = $inner -replace ';', '\;'
+      Start-Process wt.exe -ArgumentList "-w new -d `"$folder`" --title `"$title`" cmd /k `"$wtInner`"" @verb -ErrorAction Stop
+    } else {
+      Start-Process cmd.exe -ArgumentList "/k `"$inner`"" -WorkingDirectory $folder @verb -ErrorAction Stop
+    }
+  } catch { Show-Toast (T 'tCancelled') 'err'; return }
   $key = if ($st.LoggedIn) { 'tLaunched' } else { 'tLoginOpen' }
   Show-Toast (TF $key $acc.name (Split-Path $folder -Leaf)) 'ok'
   if ($script:cfg.minimizeOnLaunch) { $win.WindowState = 'Minimized' }

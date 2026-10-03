@@ -1,4 +1,4 @@
-﻿// Обёртки над командами Rust-бэкенда
+// Обёртки над командами Rust-бэкенда
 import { invoke } from '@tauri-apps/api/core'
 
 export interface Account {
@@ -8,6 +8,8 @@ export interface Account {
   proxy: string
   fullAccess: boolean
   args: string
+  /** запуск от имени администратора (UAC) */
+  admin: boolean
 }
 
 export interface Config {

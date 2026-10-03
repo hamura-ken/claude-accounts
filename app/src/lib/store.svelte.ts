@@ -41,6 +41,7 @@ export interface AccResult {
   proxy: string
   fullAccess: boolean
   args: string
+  admin: boolean
 }
 
 interface AccDialogReq {
@@ -278,7 +279,9 @@ export async function launch(st: AccState) {
   try {
     await api.launch($state.snapshot(st.acc) as Account, folder, cfg().terminal)
   } catch (e) {
-    toast(t('error', String(e)), 'err')
+    // «Нет» в окне UAC — не ошибка
+    if (e === 'cancelled') toast(t('tCancelled'))
+    else toast(t('error', String(e)), 'err')
     return
   }
   const leaf = folder.split('\\').filter(Boolean).pop() ?? folder

@@ -1,4 +1,4 @@
-﻿// Строки интерфейса: [русский, английский]. Язык переключается на лету — t() реактивна
+// Строки интерфейса: [русский, английский]. Язык переключается на лету — t() реактивна
 const S = {
   // главное окно
   settings: ['Настройки', 'Settings'],
@@ -81,6 +81,8 @@ const S = {
   aPxNoneHint: ['Claude будет подключаться напрямую, без прокси.', 'Claude will connect directly, without a proxy.'],
   aLaunch: ['Запуск', 'Launch'],
   aFull: ['Полный доступ — Claude не спрашивает подтверждений', 'Full access — Claude does not ask for confirmations'],
+  aAdmin: ['От имени администратора — Windows спросит подтверждение', 'As administrator — Windows will ask for confirmation'],
+  runAdmin: ['Запуск от имени администратора', 'Runs as administrator'],
   aArgs: ['Дополнительные аргументы claude', 'Extra claude arguments'],
   aArgsPh: ['необязательно, например: --model opus', 'optional, e.g. --model opus'],
   aDir: ['Папка с логином', 'Login folder'],
@@ -136,6 +138,7 @@ const S = {
   save: ['Сохранить', 'Save'],
   gotIt: ['Понятно', 'Got it'],
   tAdded: ['Аккаунт «{0}» добавлен — нажми «Войти» на его карточке', 'Account “{0}” added — press Sign in on its card'],
+  tCancelled: ['Запуск отменён', 'Launch cancelled'],
   tAccSaved: ['Настройки аккаунта сохранены', 'Account settings saved'],
   syncTitle: ['Синхронизация', 'Sync'],
   syncNeed2: ['Нужно хотя бы два аккаунта.', 'You need at least two accounts.'],

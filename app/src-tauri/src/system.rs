@@ -36,10 +36,43 @@ pub fn resolve_folder(text: String) -> Option<String> {
     Some(abs.to_string_lossy().into_owned())
 }
 
+/// Переменные, которые не должны доезжать до Claude. NO_COLOR/FORCE_COLOR выключают цвета,
+/// а CLAUDECODE/CLAUDE_CODE_* делают сессию «дочерней» (без сохранения истории) —
+/// они попадают к нам, если само приложение запустили из Claude Code
+fn foreign_vars() -> Vec<String> {
+    std::env::vars_os()
+        .filter_map(|(k, _)| k.into_string().ok())
+        .filter(|k| {
+            let u = k.to_ascii_uppercase();
+            ["NO_COLOR", "FORCE_COLOR", "CLAUDECODE", "CLAUDE_PID"].contains(&u.as_str()) || u.starts_with("CLAUDE_CODE_")
+        })
+        .collect()
+}
+
+/// запуск через UAC («от имени администратора»). Повышенный процесс не наследует наше окружение
+fn run_as_admin(file: &str, params: &str, dir: &str) -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let w = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let (op, f, p, d) = (w("runas"), w(file), w(params), w(dir));
+    let r = unsafe { ShellExecuteW(std::ptr::null_mut(), op.as_ptr(), f.as_ptr(), p.as_ptr(), d.as_ptr(), SW_SHOWNORMAL) } as isize;
+    match r {
+        r if r > 32 => Ok(()),
+        // SE_ERR_ACCESSDENIED: пользователь нажал «Нет» в окне UAC
+        5 => Err("cancelled".into()),
+        r => Err(format!("ShellExecute: {r}")),
+    }
+}
+
+/// async — чтобы окно не замирало, пока открыт запрос UAC
 #[tauri::command]
-pub fn launch(acc: Account, folder: String, terminal: String) -> Result<(), String> {
+pub async fn launch(acc: Account, folder: String, terminal: String) -> Result<(), String> {
     // окружение задаём прямо в команде — так оно не зависит от того, как терминал наследует переменные
     let mut parts: Vec<String> = vec![];
+    if acc.admin {
+        // повышенный cmd стартует в System32, поэтому папку задаём явно
+        parts.push(format!(r#"cd /d "{folder}""#));
+    }
     if is_default_dir(&acc.dir) {
         parts.push(r#"set "CLAUDE_CONFIG_DIR=""#.into());
     } else {
@@ -47,6 +80,10 @@ pub fn launch(acc: Account, folder: String, terminal: String) -> Result<(), Stri
     }
     for var in ["HTTPS_PROXY", "HTTP_PROXY"] {
         parts.push(format!(r#"set "{var}={}""#, acc.proxy));
+    }
+    let foreign = foreign_vars();
+    for var in &foreign {
+        parts.push(format!(r#"set "{var}=""#));
     }
     let clean: String = acc.name.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace() || "-.#_".contains(*c)).collect();
     let title = format!("Claude - {}", clean.trim());
@@ -61,16 +98,22 @@ pub fn launch(acc: Account, folder: String, terminal: String) -> Result<(), Stri
     }
     parts.push(cmd_line);
     let inner = parts.join(" && ");
-
-    let res = if terminal == "wt" && has_wt() {
-        Command::new("wt.exe")
-            .raw_arg(format!(r#"-w new -d "{folder}" --title "{title}" cmd /k "{}""#, inner.replace(';', r"\;")))
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
+    let use_wt = terminal == "wt" && has_wt();
+    let (file, args) = if use_wt {
+        ("wt.exe", format!(r#"-w new -d "{folder}" --title "{title}" cmd /k "{}""#, inner.replace(';', r"\;")))
     } else {
-        Command::new("cmd.exe").raw_arg(format!(r#"/k "{inner}""#)).current_dir(&folder).creation_flags(CREATE_NEW_CONSOLE).spawn()
+        ("cmd.exe", format!(r#"/k "{inner}""#))
     };
-    res.map(|_| ()).map_err(|e| e.to_string())
+
+    if acc.admin {
+        return run_as_admin(file, &args, &folder);
+    }
+    let mut cmd = Command::new(file);
+    cmd.raw_arg(&args).current_dir(&folder).creation_flags(if use_wt { CREATE_NO_WINDOW } else { CREATE_NEW_CONSOLE });
+    for var in &foreign {
+        cmd.env_remove(var);
+    }
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
