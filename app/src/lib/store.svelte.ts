@@ -41,7 +41,6 @@ export interface AccResult {
   proxy: string
   fullAccess: boolean
   args: string
-  admin: boolean
 }
 
 interface AccDialogReq {
@@ -253,7 +252,9 @@ export function toast(text: string, kind: 'ok' | 'err' = 'ok') {
 }
 
 export function confirmDlg(title: string, text: string, ok: string, opts: { danger?: boolean; info?: boolean } = {}) {
-  return new Promise<boolean>((resolve) => (app.confirm = { title, text, ok, ...opts, resolve }))
+  return new Promise<boolean>((resolve) => {
+    app.confirm = { title, text, ok, ...opts, resolve }
+  })
 }
 
 export function openMenu(anchor: HTMLElement, items: (MenuItem | '-')[], align: 'left' | 'right' = 'right', width = 240) {
@@ -263,7 +264,8 @@ export function openMenu(anchor: HTMLElement, items: (MenuItem | '-')[], align: 
 }
 
 // ================= действия =================
-export async function launch(st: AccState) {
+/** admin — правый клик по «Запустить»: запуск через UAC */
+export async function launch(st: AccState, admin = false) {
   if (!(await api.hasClaude())) {
     await confirmDlg(t('noClaude'), t('noClaudeText'), t('gotIt'), { info: true })
     return
@@ -277,7 +279,7 @@ export async function launch(st: AccState) {
   cfg().recent = [folder, ...cfg().recent.filter((r) => r.toLowerCase() !== folder.toLowerCase())].slice(0, 12)
   saveCfg()
   try {
-    await api.launch($state.snapshot(st.acc) as Account, folder, cfg().terminal)
+    await api.launch($state.snapshot(st.acc) as Account, folder, cfg().terminal, admin)
   } catch (e) {
     // «Нет» в окне UAC — не ошибка
     if (e === 'cancelled') toast(t('tCancelled'))
@@ -285,7 +287,7 @@ export async function launch(st: AccState) {
     return
   }
   const leaf = folder.split('\\').filter(Boolean).pop() ?? folder
-  toast(t(st.local?.loggedIn ? 'tLaunched' : 'tLoginOpen', st.acc.name, leaf))
+  toast(t(st.local?.loggedIn ? (admin ? 'tLaunchedAdmin' : 'tLaunched') : 'tLoginOpen', st.acc.name, leaf))
   if (cfg().minimizeOnLaunch) getCurrentWindow().minimize()
 }
 
@@ -312,7 +314,9 @@ export async function launchBest() {
 }
 
 export function accountDialog(acc: Account | null) {
-  return new Promise<AccResult | null>((resolve) => (app.accDialog = { acc, resolve }))
+  return new Promise<AccResult | null>((resolve) => {
+    app.accDialog = { acc, resolve }
+  })
 }
 
 export async function addAccount() {
@@ -333,7 +337,9 @@ export async function addAccount() {
 export async function editAccount(st: AccState) {
   const r = await accountDialog(st.acc)
   if (!r) return
-  Object.assign(st.acc, r)
+  // правим запись прямо в конфиге — так она точно попадёт в сохранение
+  const a = cfg().accounts.find((x) => x.dir === st.acc.dir)
+  if (a) Object.assign(a, r)
   await saveCfg()
   refreshOne(st)
   toast(t('tAccSaved'))

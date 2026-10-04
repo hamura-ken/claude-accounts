@@ -64,12 +64,13 @@ fn run_as_admin(file: &str, params: &str, dir: &str) -> Result<(), String> {
     }
 }
 
+/// admin — запуск через UAC (правый клик по «Запустить»).
 /// async — чтобы окно не замирало, пока открыт запрос UAC
 #[tauri::command]
-pub async fn launch(acc: Account, folder: String, terminal: String) -> Result<(), String> {
+pub async fn launch(acc: Account, folder: String, terminal: String, admin: bool) -> Result<(), String> {
     // окружение задаём прямо в команде — так оно не зависит от того, как терминал наследует переменные
     let mut parts: Vec<String> = vec![];
-    if acc.admin {
+    if admin {
         // повышенный cmd стартует в System32, поэтому папку задаём явно
         parts.push(format!(r#"cd /d "{folder}""#));
     }
@@ -105,7 +106,7 @@ pub async fn launch(acc: Account, folder: String, terminal: String) -> Result<()
         ("cmd.exe", format!(r#"/k "{inner}""#))
     };
 
-    if acc.admin {
+    if admin {
         return run_as_admin(file, &args, &folder);
     }
     let mut cmd = Command::new(file);

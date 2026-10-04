@@ -47,15 +47,24 @@
     getCurrentWindow().startDragging()
   }
 
+  // F5 обновляет лимиты; браузерные сочетания (перезагрузка, печать, поиск, исходник) в приложении не нужны
   function onKey(e: KeyboardEvent) {
+    const k = e.key.toLowerCase()
     if (e.key === 'F5') {
       e.preventDefault()
       refreshAll(true)
+    } else if (e.key === 'F3' || e.key === 'F7' || (e.ctrlKey && ['r', 'p', 'f', 'g', 'j', 'u', 's', 'o', 'h'].includes(k))) {
+      e.preventDefault()
     }
+  }
+
+  // браузерное меню по правой кнопке — только в полях ввода (копировать/вставить)
+  function onContextMenu(e: MouseEvent) {
+    if (!(e.target as HTMLElement).closest('input, textarea')) e.preventDefault()
   }
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} oncontextmenu={onContextMenu} />
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <main class:ready onmousedown={onMouseDown}>

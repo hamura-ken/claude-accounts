@@ -14,9 +14,6 @@ pub struct Account {
     pub proxy: String,
     pub full_access: bool,
     pub args: String,
-    /// запускать терминал от имени администратора (UAC)
-    #[serde(default)]
-    pub admin: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -103,7 +100,6 @@ pub fn load() -> Config {
                     proxy: str_of(a, "proxy").unwrap_or_else(|| g_proxy.clone()),
                     full_access: bool_of(a, "fullAccess").unwrap_or(g_full),
                     args: str_of(a, "args").unwrap_or_default(),
-                    admin: bool_of(a, "admin").unwrap_or(false),
                 });
             }
         }
@@ -135,7 +131,6 @@ pub fn load() -> Config {
             proxy: String::new(),
             full_access: true,
             args: String::new(),
-            admin: false,
         });
     }
     c

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Ellipsis, Globe, Star, Play, UserRound, ShieldCheck, TriangleAlert, Settings, RefreshCw, FolderOpen, ArrowUp, ArrowDown, LogOut, Trash2 } from '@lucide/svelte'
+  import { Ellipsis, Globe, Star, Play, UserRound, TriangleAlert, Settings, RefreshCw, FolderOpen, ArrowUp, ArrowDown, LogOut, Trash2 } from '@lucide/svelte'
   import {
     app, PALETTE, effective, score, bestAcc, launch, openMenu, editAccount, refreshOne, moveAccount, logoutAccount, removeAccount,
     type AccState,
@@ -122,9 +122,8 @@
 
   <!-- карточки в ряду одной высоты, кнопка всегда внизу -->
   <div class="grow"></div>
-  <button class="btn lg block run" class:accent={accentRun} class:ghost={!accentRun} onclick={() => launch(st)}>
+  <button class="btn lg block run" class:accent={accentRun} class:ghost={!accentRun} onclick={() => launch(st)} oncontextmenu={(e) => { e.preventDefault(); launch(st, true) }} use:tip={t('runTip')}>
     {#if logged}<Play size={14} />{t('run')}{:else}<UserRound size={15} />{t('signIn')}{/if}
-    {#if st.acc.admin}<span class="shield" use:tip={t('runAdmin')}><ShieldCheck size={15} /></span>{/if}
   </button>
 </article>
 
@@ -183,5 +182,4 @@
   .warn :global(svg) { flex-shrink: 0; }
   .grow { flex: 1; }
   .run { margin-top: 18px; }
-  .shield { display: inline-flex; margin-left: 2px; opacity: .85; }
 </style>

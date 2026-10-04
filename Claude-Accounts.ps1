@@ -245,7 +245,6 @@ function Load-Cfg {
           proxy      = if ($has -contains 'proxy') { [string]$a.proxy } else { $gProxy }
           fullAccess = if ($has -contains 'fullAccess') { [bool]$a.fullAccess } else { $gFull }
           args       = if ($has -contains 'args') { [string]$a.args } else { '' }
-          admin      = if ($has -contains 'admin') { [bool]$a.admin } else { $false }
         }
         $i++
       })
@@ -1401,7 +1400,8 @@ function Get-Folder {
   $null
 }
 
-function Start-Claude($st) {
+# Admin — правый клик по «Запустить»: запуск через UAC
+function Start-Claude($st, [switch]$Admin) {
   $acc = $st.Acc
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { [void](Show-Confirm (T 'noClaude') (T 'noClaudeText') (T 'gotIt') -Info); return }
   $folder = Get-Folder
@@ -1413,7 +1413,7 @@ function Start-Claude($st) {
   # окружение передаём явно в команде — так оно не зависит от того, как терминал наследует переменные
   $sets = @()
   # повышенный cmd стартует в System32, поэтому папку задаём явно
-  if ($acc.admin) { $sets += "cd /d `"$folder`"" }
+  if ($Admin) { $sets += "cd /d `"$folder`"" }
   if (Is-DefaultDir $acc.dir) { $sets += 'set "CLAUDE_CONFIG_DIR="' } else { $sets += "set `"CLAUDE_CONFIG_DIR=$($acc.dir)`"" }
   if ($acc.proxy) { $sets += "set `"HTTPS_PROXY=$($acc.proxy)`""; $sets += "set `"HTTP_PROXY=$($acc.proxy)`"" }
   else { $sets += 'set "HTTPS_PROXY="'; $sets += 'set "HTTP_PROXY="' }
@@ -1424,7 +1424,7 @@ function Start-Claude($st) {
   $inner = (@($sets) + "title $title" + $cmdLine) -join ' && '
 
   # admin — через UAC; «Нет» в окне подтверждения просто отменяет запуск
-  $verb = if ($acc.admin) { @{ Verb = 'RunAs' } } else { @{} }
+  $verb = if ($Admin) { @{ Verb = 'RunAs' } } else { @{} }
   try {
     if ($script:cfg.terminal -eq 'wt' -and $HasWt) {
       $wtInner = $inner -replace ';', '\;'
@@ -1551,6 +1551,7 @@ function Build-Cards {
     $ui.Glow.Background = New-Object Windows.Media.LinearGradientBrush ((Col ($c[0] -replace '#', '#14'))), ((Col '#00000000')), 90
     $card.Tag = $st
     $ui.Run.Tag = $st; $ui.Run.Add_Click({ param($s, $e) Start-Claude $s.Tag })
+    $ui.Run.Add_MouseRightButtonUp({ param($s, $e) $e.Handled = $true; Start-Claude $s.Tag -Admin })
     $ui.More.Tag = $st; $ui.More.Add_Click({ param($s, $e) Show-AccMenu $s $s.Tag })
     # ширина шкалы известна только после раскладки
     foreach ($p in 'Five', 'Week') {

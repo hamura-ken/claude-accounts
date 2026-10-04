@@ -11,8 +11,9 @@
   import Toggle from './Toggle.svelte'
 
   let { req }: { req: NonNullable<typeof app.accDialog> } = $props()
-  // диалог создаётся заново на каждый запрос, поэтому берём значение один раз
-  const acc = untrack(() => req.acc)
+  // диалог создаётся заново на каждый запрос, поэтому берём значения один раз:
+  // после закрытия (app.accDialog = null) prop req тоже станет null
+  const { acc, resolve } = untrack(() => req)
   const isNew = !acc
   const count = app.cfg?.accounts.length ?? 0
 
@@ -22,9 +23,10 @@
   let proxy = $state(acc?.proxy ?? '')
   let full = $state(acc ? acc.fullAccess : true)
   let args = $state(acc?.args ?? '')
-  let admin = $state(acc?.admin ?? false)
-  // сохранённый прокси считаем проверенным; новый — только после «Проверить»
-  let checkedUrl = $state<string | null>(acc?.proxy || null)
+  // сохранённый прокси считаем проверенным и при открытии не перепроверяем (лишний запрос);
+  // проверка нужна только новому или изменённому адресу
+  const savedUrl = acc?.proxy || null
+  let checkedUrl = $state<string | null>(savedUrl)
   let failedUrl = $state<string | null>(null)
   let busy = $state(false)
   let px = $state<{ kind: 'ok' | 'err' | 'busy'; text: string } | null>(null)
@@ -37,6 +39,7 @@
     if (!name.trim()) return t('vName')
     if (!pxOn) return ''
     if (!norm.ok) return t(norm.err)
+    if (norm.url === savedUrl) return ''
     if (busy) return t('vBusy')
     if (failedUrl === norm.url) return t('vFailed')
     if (checkedUrl !== norm.url) return t('vCheck')
@@ -93,9 +96,8 @@
   }
 
   function done(ok: boolean) {
+    resolve(ok ? { name: name.trim(), color, proxy: pxOn && norm.ok ? norm.url : '', fullAccess: full, args: args.trim() } : null)
     app.accDialog = null
-    if (!ok) return req.resolve(null)
-    req.resolve({ name: name.trim(), color, proxy: pxOn && norm.ok ? norm.url : '', fullAccess: full, args: args.trim(), admin })
   }
 
   function setPx(on: boolean) {
@@ -106,7 +108,6 @@
   onMount(() => {
     nameEl?.focus()
     nameEl?.select()
-    if (acc?.proxy) check()
   })
 </script>
 
@@ -155,8 +156,6 @@
 
     <p class="caption">{t('aLaunch')}</p>
     <Toggle bind:checked={full} label={t('aFull')} />
-    <div class="gap"></div>
-    <Toggle bind:checked={admin} label={t('aAdmin')} />
     <p class="label">{t('aArgs')}</p>
     <input class="input" bind:value={args} placeholder={t('aArgsPh')} spellcheck="false" />
 
@@ -178,7 +177,6 @@
 
 <style>
   .caption { margin-top: 22px; }
-  .gap { height: 12px; }
   .label { margin: 16px 0 7px; font-size: 12px; color: var(--muted); }
   .swatches { display: flex; gap: 6px; }
   .sw {

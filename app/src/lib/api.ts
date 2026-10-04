@@ -8,8 +8,6 @@ export interface Account {
   proxy: string
   fullAccess: boolean
   args: string
-  /** запуск от имени администратора (UAC) */
-  admin: boolean
 }
 
 export interface Config {
@@ -66,7 +64,8 @@ export const api = {
   hasClaude: () => invoke<boolean>('has_claude'),
   hasWt: () => invoke<boolean>('has_wt'),
   resolveFolder: (text: string) => invoke<string | null>('resolve_folder', { text }),
-  launch: (acc: Account, folder: string, terminal: string) => invoke<void>('launch', { acc, folder, terminal }),
+  /** admin — через UAC («от имени администратора») */
+  launch: (acc: Account, folder: string, terminal: string, admin: boolean) => invoke<void>('launch', { acc, folder, terminal, admin }),
   openPath: (path: string) => invoke<void>('open_path', { path }),
   openConfig: () => invoke<void>('open_config'),
   logout: (dir: string) => invoke<void>('logout', { dir }),

@@ -1,6 +1,6 @@
 [package]
 name = "claude-accounts"
-version = "5.1.0"
+version = "5.1.1"
 description = "Менеджер аккаунтов Claude Code с живыми лимитами"
 edition = "2021"
 
