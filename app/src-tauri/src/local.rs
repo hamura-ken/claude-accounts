@@ -72,6 +72,26 @@ pub fn read_token(dir: &str) -> Option<(Token, Option<String>)> {
     Some((Token { access, expired }, plan))
 }
 
+/// Тариф из профиля, который Claude Code сам периодически обновляет: «max 5x», «max 20x», «pro».
+/// subscriptionType в .credentials.json записывается при входе и после перехода с Pro на Max так и остаётся pro
+fn plan_from_profile(a: &Value) -> Option<String> {
+    let org = a.get("organizationType")?.as_str()?;
+    let base = org.strip_prefix("claude_").unwrap_or(org);
+    if base.is_empty() {
+        return None;
+    }
+    // default_claude_max_5x → 5x; у Pro тут default_claude_ai — множителя нет
+    let mult = a
+        .get("organizationRateLimitTier")
+        .and_then(|x| x.as_str())
+        .and_then(|t| t.rsplit('_').next())
+        .filter(|t| t.len() > 1 && t.ends_with('x') && t[..t.len() - 1].bytes().all(|b| b.is_ascii_digit()));
+    Some(match mult {
+        Some(m) => format!("{base} {m}"),
+        None => base.to_string(),
+    })
+}
+
 /// вызывается каждые несколько секунд для каждого аккаунта; .claude.json бывает в сотни КБ — читаем не в главном потоке
 #[tauri::command]
 pub async fn read_local(dir: String) -> Result<LocalInfo, String> {
@@ -88,6 +108,11 @@ fn read_local_sync(dir: &str) -> LocalInfo {
     if let Some(j) = read_json(&global_json(dir)) {
         let account = j.get("oauthAccount");
         info.email = account.and_then(|a| a.get("emailAddress")).and_then(|x| x.as_str()).map(str::to_string);
+        if info.logged_in {
+            if let Some(p) = account.and_then(plan_from_profile) {
+                info.plan = Some(p);
+            }
+        }
         // кэш берём, только если он от того же аккаунта, что залогинен сейчас
         if info.logged_in {
             if let Some(u) = j.get("cachedUsageUtilization") {
@@ -103,4 +128,19 @@ fn read_local_sync(dir: &str) -> LocalInfo {
         }
     }
     info
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plan_from_profile;
+    use serde_json::json;
+
+    #[test]
+    fn plan_from_profile_tiers() {
+        let p = |org: &str, tier: &str| plan_from_profile(&json!({ "organizationType": org, "organizationRateLimitTier": tier }));
+        assert_eq!(p("claude_max", "default_claude_max_5x").as_deref(), Some("max 5x"));
+        assert_eq!(p("claude_max", "default_claude_max_20x").as_deref(), Some("max 20x"));
+        assert_eq!(p("claude_pro", "default_claude_ai").as_deref(), Some("pro"));
+        assert_eq!(plan_from_profile(&json!({ "emailAddress": "a@b.c" })), None);
+    }
 }

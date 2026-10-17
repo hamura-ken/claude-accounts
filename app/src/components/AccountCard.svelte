@@ -89,7 +89,7 @@
     <div class="who">
       <div class="name-row">
         <span class="name">{st.acc.name}</span>
-        {#if st.local?.plan}<span class="plan">{st.local.plan.toUpperCase()}</span>{/if}
+        {#if st.local?.plan}<span class="plan">{st.local.plan.toUpperCase().replace(/(\d)X$/, '$1×')}</span>{/if}
         {#if isBest && multi}<span class="star" use:tip={t('bestStar')}><Star size={13} fill="currentColor" strokeWidth={0} /></span>{/if}
       </div>
       <div class="sub">
