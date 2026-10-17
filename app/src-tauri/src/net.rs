@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::error::Error as _;
 use std::time::{Duration, Instant};
 
-const UA: &str = "claude-accounts/5.1";
+const UA: &str = "claude-accounts/5.2";
 
 fn client(proxy: &str, timeout: Duration, fresh: bool) -> Result<reqwest::Client, String> {
     let mut b = reqwest::Client::builder().timeout(timeout).connect_timeout(timeout).user_agent(UA);

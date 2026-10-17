@@ -6,8 +6,13 @@
 
   let { title, sub = '', width = 560, onclose, children }: { title: string; sub?: string; width?: number; onclose: () => void; children: Snippet } = $props()
 
+  let el: HTMLDivElement | undefined = $state()
+
+  // Esc закрывает только верхнее окно: подтверждение поверх настроек не должно закрыть оба
   function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') onclose()
+    if (e.key !== 'Escape') return
+    const all = document.querySelectorAll('.modal')
+    if (all[all.length - 1] === el) onclose()
   }
 </script>
 
@@ -15,7 +20,7 @@
 
 <div class="scrim" transition:fade|global={{ duration: 180 }}></div>
 <div class="wrap">
-  <div class="modal" style:width="{width}px" role="dialog" aria-modal="true" transition:scale|global={{ start: 0.95, duration: 260, easing: cubicOut }}>
+  <div class="modal" bind:this={el} style:width="{width}px" role="dialog" aria-modal="true" transition:scale|global={{ start: 0.95, duration: 260, easing: cubicOut }}>
     <button class="btn icon x" onclick={onclose}><X size={16} /></button>
     <h2>{title}</h2>
     {#if sub}<p class="sub">{sub}</p>{/if}
@@ -32,7 +37,7 @@
     background: radial-gradient(90% 60% at 0% 0%, var(--dlg-glow), var(--dialog)); background-color: var(--dialog);
   }
   h2 { margin: 0 40px 0 0; font-size: 20px; font-weight: 600; }
-  .sub { margin: 6px 40px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+  .sub { margin: 6px 40px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); white-space: pre-line; }
   .modal::-webkit-scrollbar-track { margin: 16px 0; }
   .x { position: absolute; top: 16px; right: 16px; }
 </style>

@@ -23,9 +23,14 @@ pub fn has_wt() -> bool {
     find_in_path(&["wt.exe"])
 }
 
-/// путь из поля «папка проекта»: пусто — домашняя папка, файл — его папка, несуществующий — None
+/// путь из поля «папка проекта»: пусто — домашняя папка, файл — его папка, несуществующий — None.
+/// Не в главном потоке: недоступный сетевой диск отвечает по нескольку секунд
 #[tauri::command]
-pub fn resolve_folder(text: String) -> Option<String> {
+pub async fn resolve_folder(text: String) -> Result<Option<String>, String> {
+    crate::blocking(move || resolve_folder_sync(&text)).await
+}
+
+fn resolve_folder_sync(text: &str) -> Option<String> {
     let t = text.trim().trim_matches('"');
     if t.is_empty() {
         return Some(home().to_string_lossy().into_owned());
@@ -34,6 +39,18 @@ pub fn resolve_folder(text: String) -> Option<String> {
     let dir = if p.is_dir() { p.to_path_buf() } else if p.is_file() { p.parent()?.to_path_buf() } else { return None };
     let abs = std::path::absolute(&dir).unwrap_or(dir);
     Some(abs.to_string_lossy().into_owned())
+}
+
+/// какие папки из истории ещё существуют — в том же порядке
+#[tauri::command]
+pub async fn paths_exist(paths: Vec<String>) -> Result<Vec<bool>, String> {
+    crate::blocking(move || paths.iter().map(|p| Path::new(p).is_dir()).collect()).await
+}
+
+/// «C:\» в кавычках превращается в «C:\"» — экранированную кавычку для wt и командной строки.
+/// «C:\.» — та же папка без этой проблемы
+fn quotable_dir(folder: &str) -> String {
+    if folder.ends_with('\\') { format!("{folder}.") } else { folder.to_string() }
 }
 
 /// Переменные, которые не должны доезжать до Claude. NO_COLOR/FORCE_COLOR выключают цвета,
@@ -65,14 +82,20 @@ fn run_as_admin(file: &str, params: &str, dir: &str) -> Result<(), String> {
 }
 
 /// admin — запуск через UAC (правый клик по «Запустить»).
+/// resume — продолжить сессию: "continue" — последнюю в этой папке, "pick" — выбрать из списка.
 /// async — чтобы окно не замирало, пока открыт запрос UAC
 #[tauri::command]
-pub async fn launch(acc: Account, folder: String, terminal: String, admin: bool) -> Result<(), String> {
+pub async fn launch(acc: Account, folder: String, terminal: String, admin: bool, resume: String) -> Result<(), String> {
+    // кавычка в адресе прокси разорвала бы команду запуска
+    if acc.proxy.contains('"') || acc.dir.contains('"') {
+        return Err("bad quote in proxy or login folder".into());
+    }
+    let qdir = quotable_dir(&folder);
     // окружение задаём прямо в команде — так оно не зависит от того, как терминал наследует переменные
     let mut parts: Vec<String> = vec![];
     if admin {
         // повышенный cmd стартует в System32, поэтому папку задаём явно
-        parts.push(format!(r#"cd /d "{folder}""#));
+        parts.push(format!(r#"cd /d "{qdir}""#));
     }
     if is_default_dir(&acc.dir) {
         parts.push(r#"set "CLAUDE_CONFIG_DIR=""#.into());
@@ -97,11 +120,17 @@ pub async fn launch(acc: Account, folder: String, terminal: String, admin: bool)
         cmd_line.push(' ');
         cmd_line.push_str(acc.args.trim());
     }
+    match resume.as_str() {
+        "continue" => cmd_line.push_str(" --continue"),
+        "pick" => cmd_line.push_str(" --resume"),
+        _ => {}
+    }
     parts.push(cmd_line);
     let inner = parts.join(" && ");
     let use_wt = terminal == "wt" && has_wt();
     let (file, args) = if use_wt {
-        ("wt.exe", format!(r#"-w new -d "{folder}" --title "{title}" cmd /k "{}""#, inner.replace(';', r"\;")))
+        // «;» для wt — разделитель команд, его экранируем везде, включая путь
+        ("wt.exe", format!(r#"-w new -d "{}" --title "{title}" cmd /k "{}""#, qdir.replace(';', r"\;"), inner.replace(';', r"\;")))
     } else {
         ("cmd.exe", format!(r#"/k "{inner}""#))
     };
@@ -165,16 +194,24 @@ fn copy_settings(src: &Path, dst: &Path) {
     }
 }
 
+/// плагины бывают тяжёлыми — копируем не в главном потоке, иначе окно замирает
 #[tauri::command]
-pub fn sync_settings(src: String, dsts: Vec<String>) {
-    for d in dsts {
-        copy_settings(Path::new(&src), Path::new(&d));
-    }
+pub async fn sync_settings(src: String, dsts: Vec<String>) -> Result<(), String> {
+    crate::blocking(move || {
+        for d in dsts {
+            copy_settings(Path::new(&src), Path::new(&d));
+        }
+    })
+    .await
 }
 
 /// создаёт папку для нового аккаунта (.claude-accN) с настройками из первого
 #[tauri::command]
-pub fn create_account_dir(main_dir: String, taken: Vec<String>) -> Result<String, String> {
+pub async fn create_account_dir(main_dir: String, taken: Vec<String>) -> Result<String, String> {
+    crate::blocking(move || create_account_dir_sync(&main_dir, &taken)).await?
+}
+
+fn create_account_dir_sync(main_dir: &str, taken: &[String]) -> Result<String, String> {
     let taken: Vec<String> = taken.iter().map(|t| t.to_lowercase()).collect();
     let mut i = 2;
     let dir: PathBuf = loop {
@@ -185,9 +222,9 @@ pub fn create_account_dir(main_dir: String, taken: Vec<String>) -> Result<String
         i += 1;
     };
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    copy_settings(Path::new(&main_dir), &dir);
+    copy_settings(Path::new(main_dir), &dir);
     // без онбординга и с теми же MCP-серверами, что у основного аккаунта
-    let main = read_json(&global_json(&main_dir)).unwrap_or_default();
+    let main = read_json(&global_json(main_dir)).unwrap_or_default();
     let mut o = serde_json::Map::new();
     o.insert("hasCompletedOnboarding".into(), true.into());
     for k in ["lastOnboardingVersion", "mcpServers"] {
@@ -198,4 +235,13 @@ pub fn create_account_dir(main_dir: String, taken: Vec<String>) -> Result<String
     let json = serde_json::to_string_pretty(&o).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(".claude.json"), json).map_err(|e| e.to_string())?;
     Ok(dir.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn quotable_dir() {
+        assert_eq!(super::quotable_dir(r"C:\"), r"C:\.");
+        assert_eq!(super::quotable_dir(r"C:\work"), r"C:\work");
+    }
 }

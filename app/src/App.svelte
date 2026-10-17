@@ -11,6 +11,7 @@
   import AddTile from './components/AddTile.svelte'
   import Toast from './components/Toast.svelte'
   import Menu from './components/Menu.svelte'
+  import RecentPanel from './components/RecentPanel.svelte'
   import Tooltip from './components/Tooltip.svelte'
   import ConfirmDialog from './components/ConfirmDialog.svelte'
   import AccountDialog from './components/AccountDialog.svelte'
@@ -88,10 +89,12 @@
 
 <Toast />
 <Menu />
+{#if app.recent}<RecentPanel />{/if}
 <Tooltip />
-{#if app.confirm}<ConfirmDialog req={app.confirm} />{/if}
 {#if app.accDialog}<AccountDialog req={app.accDialog} />{/if}
 {#if app.settingsOpen}<SettingsDialog />{/if}
+<!-- подтверждение — поверх настроек, из которых его могут вызвать -->
+{#if app.confirm}<ConfirmDialog req={app.confirm} />{/if}
 
 <style>
   main {

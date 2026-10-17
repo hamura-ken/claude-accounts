@@ -72,15 +72,20 @@ pub fn read_token(dir: &str) -> Option<(Token, Option<String>)> {
     Some((Token { access, expired }, plan))
 }
 
+/// вызывается каждые несколько секунд для каждого аккаунта; .claude.json бывает в сотни КБ — читаем не в главном потоке
 #[tauri::command]
-pub fn read_local(dir: String) -> LocalInfo {
+pub async fn read_local(dir: String) -> Result<LocalInfo, String> {
+    crate::blocking(move || read_local_sync(&dir)).await
+}
+
+fn read_local_sync(dir: &str) -> LocalInfo {
     let mut info = LocalInfo::default();
-    if let Some((t, plan)) = read_token(&dir) {
+    if let Some((t, plan)) = read_token(dir) {
         info.logged_in = true;
         info.token_expired = t.expired;
         info.plan = plan;
     }
-    if let Some(j) = read_json(&global_json(&dir)) {
+    if let Some(j) = read_json(&global_json(dir)) {
         let account = j.get("oauthAccount");
         info.email = account.and_then(|a| a.get("emailAddress")).and_then(|x| x.as_str()).map(str::to_string);
         // кэш берём, только если он от того же аккаунта, что залогинен сейчас

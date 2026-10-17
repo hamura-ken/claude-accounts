@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Ellipsis, Globe, Star, Play, UserRound, TriangleAlert, Settings, RefreshCw, FolderOpen, ArrowUp, ArrowDown, LogOut, Trash2 } from '@lucide/svelte'
+  import { Ellipsis, Globe, Star, Play, UserRound, RotateCcw, TriangleAlert, Settings, RefreshCw, FolderOpen, ArrowUp, ArrowDown, LogOut, Trash2 } from '@lucide/svelte'
   import {
     app, PALETTE, effective, score, bestAcc, launch, openMenu, editAccount, refreshOne, moveAccount, logoutAccount, removeAccount,
     type AccState,
@@ -122,9 +122,20 @@
 
   <!-- карточки в ряду одной высоты, кнопка всегда внизу -->
   <div class="grow"></div>
-  <button class="btn lg block run" class:accent={accentRun} class:ghost={!accentRun} onclick={() => launch(st)} oncontextmenu={(e) => { e.preventDefault(); launch(st, true) }} use:tip={t('runTip')}>
-    {#if logged}<Play size={14} />{t('run')}{:else}<UserRound size={15} />{t('signIn')}{/if}
-  </button>
+  <div class="run-row">
+    <button class="btn lg block run" class:accent={accentRun} class:ghost={!accentRun} onclick={() => launch(st)} oncontextmenu={(e) => { e.preventDefault(); launch(st, true) }} use:tip={t('runTip')}>
+      {#if logged}<Play size={14} />{t('run')}{:else}<UserRound size={15} />{t('signIn')}{/if}
+    </button>
+    {#if logged}
+      <!-- продолжить прошлую сессию в выбранной папке; правый клик — список сессий -->
+      <button
+        class="btn lg ghost cont"
+        onclick={() => launch(st, false, 'continue')}
+        oncontextmenu={(e) => { e.preventDefault(); launch(st, false, 'pick') }}
+        use:tip={t(app.cfg?.sharedSessions ? 'contTipShared' : 'contTip')}
+      ><RotateCcw size={16} /></button>
+    {/if}
+  </div>
 </article>
 
 <style>
@@ -181,5 +192,7 @@
   }
   .warn :global(svg) { flex-shrink: 0; }
   .grow { flex: 1; }
-  .run { margin-top: 18px; }
+  .run-row { display: flex; gap: 8px; margin-top: 18px; }
+  .run { flex: 1; min-width: 0; }
+  .cont { width: 44px; padding: 0; flex-shrink: 0; }
 </style>

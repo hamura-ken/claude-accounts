@@ -33,3 +33,14 @@ export function fmtAgo(ms: number, now: number): string {
   const d = new Date(ms)
   return t('atTime', startOfDay(d) === startOfDay(new Date(now)) ? hm(d) : `${day(d)} ${hm(d)}`)
 }
+
+/** когда было в прошлом: «сегодня в 14:20», «вчера в 09:05», «12.10», в прошлом году — «12.10.2025» */
+export function fmtWhen(ms: number, now: number): string {
+  const d = new Date(ms)
+  // round: при переходе на летнее время в сутках 23 или 25 часов
+  const diff = Math.round((startOfDay(new Date(now)) - startOfDay(d)) / 86400000)
+  if (diff <= 0) return t('today', hm(d))
+  if (diff === 1) return t('yesterday', hm(d))
+  if (d.getFullYear() === new Date(now).getFullYear()) return day(d)
+  return lang.idx ? d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : `${day(d)}.${d.getFullYear()}`
+}

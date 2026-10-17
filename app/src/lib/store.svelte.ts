@@ -1,6 +1,6 @@
 // Состояние приложения и все действия: аккаунты, лимиты, запуск, диалоги
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { api, type Account, type Config, type Limit, type LocalInfo, type Usage } from './api'
+import { api, type Account, type Config, type Limit, type LocalInfo, type Resume, type Usage } from './api'
 import { fmtUntil } from './format'
 import { setLangIdx, t } from './i18n.svelte'
 
@@ -16,6 +16,8 @@ export interface AccState {
   retryAt: number
   /** сколько 429 подряд — пауза растёт 5 → 10 → 20 → 30 мин */
   rateHits: number
+  /** идёт чтение локальных файлов — следующее не запускаем поверх */
+  reading: boolean
 }
 
 export interface MenuItem {
@@ -63,6 +65,8 @@ export const app = $state({
   theme: 'dark' as 'dark' | 'light',
   toast: null as { text: string; kind: 'ok' | 'err'; id: number } | null,
   menu: null as { x: number; y: number; items: (MenuItem | '-')[]; width?: number } | null,
+  /** панель истории папок: позиция и ширина под строкой выбора папки */
+  recent: null as { x: number; y: number; w: number } | null,
   confirm: null as ConfirmReq | null,
   accDialog: null as AccDialogReq | null,
   settingsOpen: false,
@@ -71,8 +75,55 @@ export const app = $state({
 const cfg = () => app.cfg!
 
 // ================= сохранение =================
-export async function saveCfg() {
-  if (app.cfg) await api.saveConfig($state.snapshot(app.cfg) as Config)
+/** отметка файла конфига после нашего последнего чтения или записи — по ней видно правку снаружи */
+let cfgStamp = 0
+let saveChain: Promise<void> = Promise.resolve()
+let saveQueued = false
+let saveErrAt = 0
+
+/** записи идут строго по очереди, а несколько вызовов подряд сливаются в одну запись */
+export function saveCfg(): Promise<void> {
+  if (!app.cfg) return Promise.resolve()
+  if (saveQueued) return saveChain
+  saveQueued = true
+  saveChain = saveChain.then(async () => {
+    saveQueued = false
+    try {
+      cfgStamp = await api.saveConfig($state.snapshot(app.cfg) as Config)
+    } catch (e) {
+      // одна ошибка на серию, а не тост на каждое сохранение
+      if (Date.now() - saveErrAt > 10_000) toast(t('eSave', String(e)), 'err')
+      saveErrAt = Date.now()
+    }
+  })
+  return saveChain
+}
+
+/** конфиг поправили снаружи (Блокнот через «Файл конфигурации», PowerShell-версия) — перечитываем,
+ *  чтобы следующее наше сохранение не затёрло чужие изменения */
+let reloading = false
+async function reloadIfChanged() {
+  if (reloading || saveQueued || app.accDialog || app.confirm || app.settingsOpen || app.recent) return
+  reloading = true
+  try {
+    await saveChain
+    const stamp = await api.configStamp()
+    if (!stamp || stamp === cfgStamp) return
+    const fresh = await api.loadConfig()
+    // пока читали, могли начать сохранять своё — тогда перечитаем на следующем круге
+    if (saveQueued) return
+    cfgStamp = stamp
+    app.cfg = fresh
+    setLangIdx(fresh.lang)
+    document.documentElement.lang = fresh.lang
+    applyTheme()
+    buildAccs()
+    app.accs.forEach(readLocal)
+  } catch {
+    // файл в этот момент переписывают — попробуем на следующем круге
+  } finally {
+    reloading = false
+  }
 }
 
 // ================= лимиты =================
@@ -104,11 +155,24 @@ export function bestAcc(): AccState | null {
 }
 
 async function readLocal(st: AccState) {
-  const wasLogged = st.local?.loggedIn
+  if (st.reading) return
+  st.reading = true
+  const prev = st.local
+  const wasLogged = prev?.loggedIn
   try {
-    st.local = await api.readLocal(st.acc.dir)
+    const info = await api.readLocal(st.acc.dir)
+    // .claude.json мог попасться недописанным, пока Claude Code его сохранял (тогда не прочитался даже email):
+    // оставляем прошлые email и кэш, а не мигаем «нет данных». Если email есть, а кэша нет — это правда, не подменяем
+    if (info.loggedIn && prev?.loggedIn && !info.email && prev.email) {
+      info.email = prev.email
+      info.cache ??= prev.cache
+      info.cacheAt ??= prev.cacheAt
+    }
+    st.local = info
   } catch {
     return
+  } finally {
+    st.reading = false
   }
   if (!st.local.loggedIn) {
     st.live = null
@@ -194,7 +258,7 @@ function buildAccs() {
       o.acc = acc
       return o
     }
-    return { acc, local: null, live: null, liveAt: null, err: null, fetching: false, wasLimited: false, retryAt: 0, rateHits: 0 }
+    return { acc, local: null, live: null, liveAt: null, err: null, fetching: false, wasLimited: false, retryAt: 0, rateHits: 0, reading: false }
   })
 }
 
@@ -264,8 +328,8 @@ export function openMenu(anchor: HTMLElement, items: (MenuItem | '-')[], align: 
 }
 
 // ================= действия =================
-/** admin — правый клик по «Запустить»: запуск через UAC */
-export async function launch(st: AccState, admin = false) {
+/** admin — правый клик по «Запустить»: запуск через UAC. resume — продолжить прошлую сессию */
+export async function launch(st: AccState, admin = false, resume: Resume = '') {
   if (!(await api.hasClaude())) {
     await confirmDlg(t('noClaude'), t('noClaudeText'), t('gotIt'), { info: true })
     return
@@ -276,10 +340,10 @@ export async function launch(st: AccState, admin = false) {
     return
   }
   app.folder = folder
-  cfg().recent = [folder, ...cfg().recent.filter((r) => r.toLowerCase() !== folder.toLowerCase())].slice(0, 12)
+  rememberFolder(folder)
   saveCfg()
   try {
-    await api.launch($state.snapshot(st.acc) as Account, folder, cfg().terminal, admin)
+    await api.launch($state.snapshot(st.acc) as Account, folder, cfg().terminal, admin, resume)
   } catch (e) {
     // «Нет» в окне UAC — не ошибка
     if (e === 'cancelled') toast(t('tCancelled'))
@@ -287,7 +351,8 @@ export async function launch(st: AccState, admin = false) {
     return
   }
   const leaf = folder.split('\\').filter(Boolean).pop() ?? folder
-  toast(t(st.local?.loggedIn ? (admin ? 'tLaunchedAdmin' : 'tLaunched') : 'tLoginOpen', st.acc.name, leaf))
+  const msg = !st.local?.loggedIn ? 'tLoginOpen' : resume === 'continue' ? 'tContinued' : resume === 'pick' ? 'tPickSession' : admin ? 'tLaunchedAdmin' : 'tLaunched'
+  toast(t(msg, st.acc.name, leaf))
   if (cfg().minimizeOnLaunch) getCurrentWindow().minimize()
 }
 
@@ -325,6 +390,8 @@ export async function addAccount() {
   try {
     const dir = await api.createAccountDir(cfg().accounts[0].dir, cfg().accounts.map((a) => a.dir))
     cfg().accounts.push({ ...r, dir })
+    // новый аккаунт сразу видит общую историю
+    if (cfg().sharedSessions) await linkShared([dir])
   } catch (e) {
     return toast(t('error', String(e)), 'err')
   }
@@ -379,8 +446,95 @@ export async function syncSettings() {
   const list = cfg().accounts
   if (list.length < 2) return void (await confirmDlg(t('syncTitle'), t('syncNeed2'), t('gotIt'), { info: true }))
   if (!(await confirmDlg(t('syncAsk'), t('syncText', list[0].name), t('syncOk')))) return
-  await api.syncSettings(list[0].dir, list.slice(1).map((a) => a.dir))
+  try {
+    await api.syncSettings(list[0].dir, list.slice(1).map((a) => a.dir))
+  } catch (e) {
+    return toast(t('error', String(e)), 'err')
+  }
   toast(t('tSynced'))
+}
+
+// ================= общие сессии =================
+/** подключает папки аккаунтов к общей истории; ошибки — тостом с именами аккаунтов */
+async function linkShared(dirs: string[]): Promise<boolean> {
+  try {
+    const r = await api.shareSessions(dirs)
+    if (r.backup) toast(t('tShareBackup', r.backup))
+    if (!r.errors.length) return true
+    console.error('share_sessions', r.errors)
+    const names = cfg().accounts.filter((a) => r.errors.some((e) => e.toLowerCase().startsWith(a.dir.toLowerCase() + ':'))).map((a) => a.name)
+    toast(t('eShare', names.join(', ') || r.errors.join('; ')), 'err')
+  } catch (e) {
+    toast(t('error', String(e)), 'err')
+  }
+  return false
+}
+
+/** включение и выключение применяются сразу, с подтверждением */
+export async function setSharedSessions(on: boolean): Promise<void> {
+  const dirs = cfg().accounts.map((a) => a.dir)
+  if (on) {
+    if (!(await confirmDlg(t('shareTitle'), t('shareText'), t('shareOk')))) return
+    // флаг ставим даже при частичной неудаче: занятые аккаунты подключатся при следующем запуске приложения
+    cfg().sharedSessions = true
+    await saveCfg()
+    if (await linkShared(dirs)) toast(t('tShared'))
+  } else {
+    if (!(await confirmDlg(t('unshareTitle'), t('unshareText'), t('unshareOk'), { danger: true }))) return
+    cfg().sharedSessions = false
+    await saveCfg()
+    try {
+      const errs = await api.unshareSessions(dirs)
+      if (errs.length) toast(t('error', errs.join('; ')), 'err')
+      else toast(t('tUnshared'))
+    } catch (e) {
+      toast(t('error', String(e)), 'err')
+    }
+  }
+}
+
+/** при старте: аккаунты, добавленные мимо приложения или занятые в прошлый раз, подключаем молча */
+async function ensureShared() {
+  if (!cfg().sharedSessions) return
+  const dirs = cfg().accounts.map((a) => a.dir)
+  const ok = await api.sharedStatus(dirs).catch(() => dirs.map(() => true))
+  const todo = dirs.filter((_, i) => !ok[i])
+  if (todo.length) await linkShared(todo)
+}
+
+// ================= история папок =================
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+
+/** папка запуска — в начало истории. История не обрезается */
+function rememberFolder(folder: string) {
+  const c = cfg()
+  c.recent = [folder, ...c.recent.filter((r) => !same(r, folder))]
+  for (const k of Object.keys(c.recentAt)) if (same(k, folder)) delete c.recentAt[k]
+  c.recentAt[folder] = Date.now()
+}
+
+export function removeRecent(paths: string[]) {
+  const c = cfg()
+  const drop = new Set(paths.map((p) => p.toLowerCase()))
+  c.recent = c.recent.filter((r) => !drop.has(r.toLowerCase()))
+  for (const k of Object.keys(c.recentAt)) if (drop.has(k.toLowerCase())) delete c.recentAt[k]
+  saveCfg()
+}
+
+export async function clearRecent() {
+  const n = cfg().recent.length
+  if (!n) return
+  if (!(await confirmDlg(t('rcClearTitle'), t('rcClearText', n), t('rcClearOk'), { danger: true }))) return
+  cfg().recent = []
+  cfg().recentAt = {}
+  saveCfg()
+  toast(t('rcCleared'))
+}
+
+export function openRecent(anchor: HTMLElement) {
+  const r = anchor.getBoundingClientRect()
+  app.menu = null
+  app.recent = { x: r.left, y: r.bottom + 6, w: r.width }
 }
 
 export async function pickFolderFromPath(p: string) {
@@ -394,6 +548,7 @@ export async function pickFolderFromPath(p: string) {
 export async function init() {
   demo = await api.demoMode()
   app.cfg = await api.loadConfig()
+  cfgStamp = await api.configStamp().catch(() => 0)
   if (!cfg().lang) {
     const sys = navigator.language.slice(0, 2).toLowerCase()
     cfg().lang = ['ru', 'uk', 'be', 'kk'].includes(sys) ? 'ru' : 'en'
@@ -408,14 +563,20 @@ export async function init() {
   api.hasWt().then((v) => (app.hasWt = v))
   await Promise.all(app.accs.map(readLocal))
   refreshAll()
+  ensureShared()
 
   // раз в секунду: тикают таймеры сброса, по расписанию обновляются лимиты
   setInterval(() => {
     app.now = Date.now()
-    if (app.now - app.lastRefresh >= cfg().refreshSec * 1000) refreshAll()
+    if (app.now - app.lastRefresh >= cfg().refreshSec * 1000) refreshAll().catch(() => {})
     checkBackOnline()
   }, 1000)
   // логин мог появиться из терминала — локальные файлы читаем чаще, это дёшево и без сети.
   // В сеть ходим только по расписанию: лишние запросы упираются в лимит частоты (429)
-  setInterval(() => app.accs.forEach(readLocal), 4000)
+  setInterval(() => {
+    app.accs.forEach(readLocal)
+    reloadIfChanged()
+  }, 4000)
+  // вернулись в окно — сразу подхватываем правку конфига, не дожидаясь таймера
+  window.addEventListener('focus', () => reloadIfChanged())
 }

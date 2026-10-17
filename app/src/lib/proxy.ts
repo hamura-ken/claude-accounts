@@ -3,6 +3,15 @@ export type Normalized = { ok: true; url: string } | { ok: false; err: 'pxEmpty'
 
 const isPort = (p: string) => /^\d{1,5}$/.test(p)
 
+/** уже закодированное (%40) не кодируем повторно */
+function enc(s: string): string {
+  try {
+    return encodeURIComponent(decodeURIComponent(s))
+  } catch {
+    return encodeURIComponent(s)
+  }
+}
+
 export function normalizeProxy(input: string): Normalized {
   let s = input.trim()
   if (!s) return { ok: false, err: 'pxEmpty' }
@@ -12,7 +21,13 @@ export function normalizeProxy(input: string): Normalized {
   if (at >= 0) {
     const cred = s.slice(0, at)
     const [host, port, ...rest] = s.slice(at + 1).split(':')
-    if (cred && host && port && isPort(port) && !rest.length) return { ok: true, url: `http://${cred}@${host}:${port}` }
+    if (cred && host && port && isPort(port) && !rest.length) {
+      // логин и пароль кодируем, как в формате host:port:логин:пароль: иначе «#», «/» или кавычка в пароле ломают адрес
+      const i = cred.indexOf(':')
+      const user = enc(i < 0 ? cred : cred.slice(0, i))
+      const auth = i < 0 ? user : `${user}:${enc(cred.slice(i + 1))}`
+      return { ok: true, url: `http://${auth}@${host}:${port}` }
+    }
     return { ok: false, err: 'pxFormat' }
   }
   const p = s.split(':')

@@ -1,6 +1,6 @@
 ﻿<script lang="ts">
   import { Moon, Sun, Monitor, RefreshCcw, FileText } from '@lucide/svelte'
-  import { app, setTheme, setLang, saveCfg, syncSettings, toast } from '../lib/store.svelte'
+  import { app, setTheme, setLang, saveCfg, syncSettings, setSharedSessions, toast } from '../lib/store.svelte'
   import { api, type Config } from '../lib/api'
   import { t } from '../lib/i18n.svelte'
   import { tip } from '../lib/tip.svelte'
@@ -13,6 +13,19 @@
   let interval = $state(cfg.refreshSec)
   let terminal = $state(cfg.terminal === 'wt' && app.hasWt ? 'wt' : 'cmd')
   let minimize = $state(cfg.minimizeOnLaunch)
+  let shared = $state(cfg.sharedSessions)
+  let sharing = $state(false)
+
+  // общие сессии применяются сразу (с подтверждением), а не по «Сохранить»
+  async function toggleShared(v: boolean) {
+    sharing = true
+    try {
+      await setSharedSessions(v)
+    } finally {
+      shared = cfg.sharedSessions
+      sharing = false
+    }
+  }
 
   const themes: [Config['theme'], any, string][] = [['dark', Moon, 'thDark'], ['light', Sun, 'thLight'], ['system', Monitor, 'thSys']]
   const intervals: [number, string][] = [[300, 'iv5'], [600, 'iv10'], [900, 'iv15'], [1800, 'iv30']]
@@ -66,6 +79,10 @@
 
   <p class="caption">{t('sBehavior')}</p>
   <Toggle bind:checked={minimize} label={t('sMinLaunch')} />
+
+  <p class="caption">{t('sSessions')}</p>
+  <Toggle bind:checked={shared} label={t('sShared')} disabled={sharing} onchange={toggleShared} />
+  <p class="hint">{t('sSharedHint')}</p>
 
   <p class="caption">{t('sTools')}</p>
   <div class="tools">

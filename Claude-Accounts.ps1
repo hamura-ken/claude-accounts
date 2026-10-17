@@ -249,6 +249,7 @@ function Load-Cfg {
         $i++
       })
       $c.recent = @($j.recent | Where-Object { $_ } | ForEach-Object { [string]$_ })
+      if ($j.recentAt) { $c.recentAt = $j.recentAt }  # время запусков из Tauri-версии — сохраняем как есть
       if ($j.refreshSec) { $c.refreshSec = [math]::Max(300, [int]$j.refreshSec) }  # не чаще раза в 5 минут — иначе Anthropic отвечает 429
       if ($j.terminal) { $c.terminal = [string]$j.terminal }
       if ($null -ne $j.minimizeOnLaunch) { $c.minimizeOnLaunch = [bool]$j.minimizeOnLaunch }
@@ -1406,7 +1407,7 @@ function Start-Claude($st, [switch]$Admin) {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { [void](Show-Confirm (T 'noClaude') (T 'noClaudeText') (T 'gotIt') -Info); return }
   $folder = Get-Folder
   if (-not $folder) { Show-Toast (TF 'noFolder' $tbFolder.Text) 'err'; return }
-  $script:cfg.recent = @(@($folder) + @($script:cfg.recent | Where-Object { $_ -ine $folder }) | Select-Object -First 12)
+  $script:cfg.recent = @(@($folder) + @($script:cfg.recent | Where-Object { $_ -ine $folder }))  # вся история, без ограничения
   $tbFolder.Text = $folder
   Save-Cfg
 
