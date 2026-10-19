@@ -53,6 +53,13 @@ fn merge(src: &Path, dst: &Path, backup: &Path) -> io::Result<()> {
             fs::rename(&from, &to)?;
         } else if ft.is_file() && to.is_file() && same_content(&from, &to) {
             fs::remove_file(&from)?;
+        } else if ft.is_file() && to.is_file() && name.eq_ignore_ascii_case("MEMORY.md") {
+            // индекс памяти проекта: у каждого аккаунта свои пункты, поэтому объединяем строки, а не выбираем один файл
+            let (a, b) = (fs::read_to_string(&to)?, fs::read_to_string(&from)?);
+            let (base, extra) = if mtime(&from) > mtime(&to) { (b, a) } else { (a, b) };
+            fs::write(&to, union_lines(&base, &extra))?;
+            fs::create_dir_all(backup)?;
+            fs::rename(&from, backup.join(&name))?;
         } else {
             fs::create_dir_all(backup)?;
             if ft.is_file() && to.is_file() && mtime(&from) > mtime(&to) {
@@ -64,6 +71,18 @@ fn merge(src: &Path, dst: &Path, backup: &Path) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// base целиком, затем строки extra, которых в base нет
+fn union_lines(base: &str, extra: &str) -> String {
+    let have: std::collections::HashSet<&str> = base.lines().map(str::trim_end).collect();
+    let mut out = base.trim_end().to_string();
+    for l in extra.lines().map(str::trim_end).filter(|l| !l.trim().is_empty() && !have.contains(l)) {
+        out.push('\n');
+        out.push_str(l);
+    }
+    out.push('\n');
+    out
 }
 
 /// junction создаётся без прав администратора, в отличие от символической ссылки
@@ -183,8 +202,14 @@ mod tests {
         w(&dst.join("p2").join("conf.jsonl"), "old");
         std::thread::sleep(std::time::Duration::from_millis(20));
         w(&src.join("p2").join("conf.jsonl"), "newer");
+        w(&dst.join("p2").join("memory").join("MEMORY.md"), "# Memory\n- [A](a.md)\n- [B](b.md)\n");
+        w(&src.join("p2").join("memory").join("MEMORY.md"), "# Memory\n- [A](a.md)\n- [C](c.md)\n");
         merge(&src, &dst, &bak).unwrap();
 
+        // из индексов памяти не пропадает ни один пункт
+        let mem = fs::read_to_string(dst.join("p2").join("memory").join("MEMORY.md")).unwrap();
+        assert_eq!(mem.lines().filter(|l| l.starts_with("- [")).count(), 3, "{mem}");
+        assert!(mem.starts_with("# Memory\n- [A](a.md)\n- [C](c.md)\n"), "{mem}");
         assert_eq!(fs::read_to_string(dst.join("p1").join("a.jsonl")).unwrap(), "only-src");
         assert_eq!(fs::read_to_string(dst.join("p2").join("conf.jsonl")).unwrap(), "newer");
         assert_eq!(fs::read_to_string(bak.join("p2").join("conf.jsonl")).unwrap(), "old");

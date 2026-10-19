@@ -342,6 +342,11 @@ export async function launch(st: AccState, admin = false, resume: Resume = '') {
   app.folder = folder
   rememberFolder(folder)
   saveCfg()
+  // без общих сессий ⟳ видит только историю этого аккаунта — предложим включить
+  if (resume && cfg().accounts.length > 1) {
+    if (cfg().sharedSessions) await ensureShared()
+    else if (await confirmDlg(t('shareTitle'), t('shareFromCont') + '\n\n' + t('shareText'), t('shareOk'))) await enableShared()
+  }
   try {
     await api.launch($state.snapshot(st.acc) as Account, folder, cfg().terminal, admin, resume)
   } catch (e) {
@@ -470,15 +475,18 @@ async function linkShared(dirs: string[]): Promise<boolean> {
   return false
 }
 
+async function enableShared() {
+  // флаг ставим даже при частичной неудаче: занятые аккаунты подключатся при следующем ⟳ или запуске приложения
+  cfg().sharedSessions = true
+  await saveCfg()
+  if (await linkShared(cfg().accounts.map((a) => a.dir))) toast(t('tShared'))
+}
+
 /** включение и выключение применяются сразу, с подтверждением */
 export async function setSharedSessions(on: boolean): Promise<void> {
   const dirs = cfg().accounts.map((a) => a.dir)
   if (on) {
-    if (!(await confirmDlg(t('shareTitle'), t('shareText'), t('shareOk')))) return
-    // флаг ставим даже при частичной неудаче: занятые аккаунты подключатся при следующем запуске приложения
-    cfg().sharedSessions = true
-    await saveCfg()
-    if (await linkShared(dirs)) toast(t('tShared'))
+    if (await confirmDlg(t('shareTitle'), t('shareText'), t('shareOk'))) await enableShared()
   } else {
     if (!(await confirmDlg(t('unshareTitle'), t('unshareText'), t('unshareOk'), { danger: true }))) return
     cfg().sharedSessions = false
